@@ -1,0 +1,67 @@
+[
+  {
+    "key": "2020-H1",
+    "label": "Jan–Jun 2020",
+    "gapCount": 177206
+  },
+  {
+    "key": "2020-H2",
+    "label": "Jul–Dec 2020",
+    "gapCount": 173718
+  },
+  {
+    "key": "2021-H1",
+    "label": "Jan–Jun 2021",
+    "gapCount": 171171
+  },
+  {
+    "key": "2021-H2",
+    "label": "Jul–Dec 2021",
+    "gapCount": 168858
+  },
+  {
+    "key": "2022-H1",
+    "label": "Jan–Jun 2022",
+    "gapCount": 166898
+  },
+  {
+    "key": "2022-H2",
+    "label": "Jul–Dec 2022",
+    "gapCount": 164105
+  },
+  {
+    "key": "2023-H1",
+    "label": "Jan–Jun 2023",
+    "gapCount": 160814
+  },
+  {
+    "key": "2023-H2",
+    "label": "Jul–Dec 2023",
+    "gapCount": 155986
+  },
+  {
+    "key": "2024-H1",
+    "label": "Jan–Jun 2024",
+    "gapCount": 151870
+  },
+  {
+    "key": "2024-H2",
+    "label": "Jul–Dec 2024",
+    "gapCount": 148505
+  },
+  {
+    "key": "2025-H1",
+    "label": "Jan–Jun 2025",
+    "gapCount": 145389
+  },
+  {
+    "key": "2025-H2",
+    "label": "Jul–Dec 2025",
+    "gapCount": 143467
+  },
+  {
+    "key": "2026-H1",
+    "label": "Jan–Jun 2026",
+    "gapCount": 141625
+  }
+]

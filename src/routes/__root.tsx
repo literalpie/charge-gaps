@@ -14,6 +14,11 @@ import styleCss from '../styles.css?url'
 
 export const Route = createRootRouteWithContext()({
   head: () => ({
+    meta: [
+      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      { name: 'description', content: 'EV charging gaps map' },
+      { title: 'Charge Gaps' },
+    ],
     links: [{ rel: 'stylesheet', href: styleCss }],
   }),
   shellComponent: RootComponent,

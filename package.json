@@ -13,20 +13,24 @@
     "check": "biome check"
   },
   "dependencies": {
+    "@msviderok/base-ui-solid": "1.0.0-beta.12",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/solid-query": "latest",
     "@tanstack/solid-query-devtools": "latest",
     "@tanstack/solid-router": "latest",
     "@tanstack/solid-router-devtools": "latest",
     "@tanstack/solid-start": "latest",
+    "maplibre-gl": "^6.1.0",
     "solid-js": "^1.9.12",
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
+    "@netlify/functions": "^5.3.0",
     "@netlify/vite-plugin-tanstack-start": "^1.2.15",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-cli": "^1.133.21",
+    "@types/maplibre-gl": "^1.14.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vite-plugin-solid": "^2.11.12"
