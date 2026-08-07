@@ -5,12 +5,14 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/solid-router'
 
-import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools'
+import { QueryClient, QueryClientProvider } from '@tanstack/solid-query'
 
 import { HydrationScript } from 'solid-js/web'
 import { Suspense } from 'solid-js'
 
 import styleCss from '../styles.css?url'
+
+const queryClient = new QueryClient()
 
 export const Route = createRootRouteWithContext()({
   head: () => ({
@@ -32,10 +34,11 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body>
-        <Suspense>
-          <Outlet />
-          <TanStackRouterDevtools />
-        </Suspense>
+        <QueryClientProvider client={queryClient}>
+          <Suspense>
+            <Outlet />
+          </Suspense>
+        </QueryClientProvider>
         <Scripts />
       </body>
     </html>

@@ -1,8 +1,9 @@
 import type { Context } from "@netlify/functions";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const OHIO_ONLY = false;
+const CURRENT_ONLY = false;
 const GAP_THRESHOLD_MILES = 20;
 const GRID_SPACING_MILES = 5;
 const EARTH_RADIUS_MILES = 3959;
@@ -62,7 +63,10 @@ function haversine(
 	return EARTH_RADIUS_MILES * c;
 }
 
-function generateGrid(bounds: typeof OHIO_BOUNDS, spacingMi: number) {
+function generateGrid(
+	bounds: typeof OHIO_BOUNDS,
+	spacingMi: number,
+): { lat: number; lng: number }[] {
 	const latStep = spacingMi / 69;
 	const lngStep = spacingMi / 53;
 	const points: { lat: number; lng: number }[] = [];
@@ -75,7 +79,18 @@ function generateGrid(bounds: typeof OHIO_BOUNDS, spacingMi: number) {
 	return points;
 }
 
+const CACHE_PATH = join(
+	import.meta.dirname ?? process.cwd(),
+	".station-cache.json",
+);
+
 async function fetchStations(apiKey: string): Promise<Station[]> {
+	if (existsSync(CACHE_PATH)) {
+		console.log("Loading stations from cache...");
+		const raw = readFileSync(CACHE_PATH, "utf-8");
+		return JSON.parse(raw) as Station[];
+	}
+
 	const stations: Station[] = [];
 	let offset = 1;
 	let total = Infinity;
@@ -106,6 +121,9 @@ async function fetchStations(apiKey: string): Promise<Station[]> {
 
 		if (fuelStations.length === 0) break;
 	}
+
+	writeFileSync(CACHE_PATH, JSON.stringify(stations));
+	console.log(`Cached ${stations.length} stations to ${CACHE_PATH}`);
 
 	return stations;
 }
@@ -195,7 +213,9 @@ export default async (_req: Request, _context: Context) => {
 
 	const bounds = OHIO_ONLY ? OHIO_BOUNDS : US_BOUNDS;
 	const grid = generateGrid(bounds, GRID_SPACING_MILES);
-	console.log(`Generated ${grid.length} grid points`);
+	console.log(
+		`Generated ${grid.length} land grid points (ocean points filtered)`,
+	);
 
 	const buckets = generateTimeBuckets();
 	const outputDir = join(process.cwd(), "public", "data", "gaps");
@@ -203,8 +223,12 @@ export default async (_req: Request, _context: Context) => {
 
 	const manifest: { key: string; label: string; gapCount: number }[] = [];
 
-	for (let i = 0; i < buckets.length; i++) {
-		const bucket = buckets[i];
+	const bucketsToProcess = CURRENT_ONLY ? [buckets[buckets.length - 1]] : buckets;
+	const scope2 = CURRENT_ONLY ? " (current only)" : "";
+	console.log(`Processing ${bucketsToProcess.length} bucket(s)${scope2}`);
+
+	for (let i = 0; i < bucketsToProcess.length; i++) {
+		const bucket = bucketsToProcess[i];
 		const stationsAtTime = allStations.filter((s) => {
 			if (!s.open_date) return true;
 			return new Date(s.open_date) <= bucket.cutoff;
@@ -226,19 +250,31 @@ export default async (_req: Request, _context: Context) => {
 			gapCount: gaps.length,
 		});
 
-		const pct = Math.round(((i + 1) / buckets.length) * 100);
+		const pct = Math.round(((i + 1) / bucketsToProcess.length) * 100);
 		console.log(
 			`[${pct}%] ${bucket.label}: ${stationsAtTime.length} stations, ${gaps.length} gaps`,
 		);
 	}
 
+	let finalManifest = manifest;
+	if (CURRENT_ONLY) {
+		const manifestPath = join(outputDir, "manifest.json");
+		if (existsSync(manifestPath)) {
+			const existing = JSON.parse(readFileSync(manifestPath, "utf-8")) as typeof manifest;
+			const merged = existing.filter((m) => m.key !== manifest[0].key);
+			merged.push(manifest[0]);
+			merged.sort((a, b) => a.key.localeCompare(b.key));
+			finalManifest = merged;
+		}
+	}
+
 	const manifestPath = join(outputDir, "manifest.json");
-	writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+	writeFileSync(manifestPath, JSON.stringify(finalManifest, null, 2));
 
 	const summary = {
 		totalStations: allStations.length,
 		gridPoints: grid.length,
-		buckets: buckets.length,
+		buckets: bucketsToProcess.length,
 		outputDir,
 	};
 	console.log("Done:", summary);

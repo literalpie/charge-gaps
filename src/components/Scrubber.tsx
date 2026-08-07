@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
+import { createQuery } from "@tanstack/solid-query";
 
 interface Bucket {
 	key: string;
@@ -12,15 +13,32 @@ interface ScrubberProps {
 }
 
 export default function Scrubber(props: ScrubberProps) {
-	const [buckets, setBuckets] = createSignal<Bucket[]>([]);
 	const [selected, setSelected] = createSignal(0);
 	const [playing, setPlaying] = createSignal(false);
 	let interval: ReturnType<typeof setInterval> | undefined;
 
+	const manifest = createQuery(() => ({
+		queryKey: ["manifest"],
+		queryFn: async () => {
+			const res = await fetch("/data/gaps/manifest.json");
+			if (!res.ok) throw new Error("Failed to load manifest");
+			return (await res.json()) as Bucket[];
+		},
+		staleTime: Number.POSITIVE_INFINITY,
+	}));
+
+	onMount(() => {
+		const data = manifest.data;
+		if (data && data.length > 0) {
+			setSelected(data.length - 1);
+			props.onChange(data[data.length - 1].key);
+		}
+	});
+
 	function applyIndex(idx: number) {
 		setSelected(idx);
-		const bucket = buckets()[idx];
-		if (bucket) props.onChange(bucket.key);
+		const data = manifest.data;
+		if (data && data[idx]) props.onChange(data[idx].key);
 	}
 
 	function togglePlay() {
@@ -30,34 +48,25 @@ export default function Scrubber(props: ScrubberProps) {
 			return;
 		}
 
-		if (selected() >= buckets().length - 1) {
+		const data = manifest.data;
+		if (!data) return;
+
+		if (selected() >= data.length - 1) {
 			applyIndex(0);
 		}
 
 		setPlaying(true);
 		interval = setInterval(() => {
 			const next = selected() + 1;
-			if (next >= buckets().length) {
+			const d = manifest.data;
+			if (!d || next >= d.length) {
 				clearInterval(interval);
 				setPlaying(false);
 				return;
 			}
 			applyIndex(next);
-		}, 1500);
+		}, 1000);
 	}
-
-	onMount(async () => {
-		try {
-			const res = await fetch("/data/gaps/manifest.json");
-			if (!res.ok) return;
-			const data = (await res.json()) as Bucket[];
-			setBuckets(data);
-			setSelected(data.length - 1);
-			props.onChange(data[data.length - 1].key);
-		} catch (e) {
-			console.warn("Could not load manifest:", e);
-		}
-	});
 
 	onCleanup(() => {
 		clearInterval(interval);
@@ -68,7 +77,7 @@ export default function Scrubber(props: ScrubberProps) {
 		applyIndex(idx);
 	}
 
-	const current = () => buckets()[selected()];
+	const current = () => manifest.data?.[selected()];
 
 	return (
 		<div
@@ -93,7 +102,7 @@ export default function Scrubber(props: ScrubberProps) {
 				<input
 					type="range"
 					min="0"
-					max={Math.max(0, buckets().length - 1)}
+					max={Math.max(0, (manifest.data?.length ?? 1) - 1)}
 					value={selected()}
 					onInput={handleChange}
 					class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-red-500"

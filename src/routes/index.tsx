@@ -11,7 +11,7 @@ function Home() {
 
 	return (
 		<div class="relative w-full h-screen">
-			<Map center={[-82.9, 40.4]} zoom={7} dataUrl={dataUrl()} />
+			<Map center={[-98, 39]} zoom={5} dataUrl={dataUrl()} />
 			<div class="absolute top-4 left-4 z-10">
 				<h1 class="text-lg font-bold bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 mb-2">
 					EV Charging Gaps
