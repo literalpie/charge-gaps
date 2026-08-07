@@ -14,8 +14,4 @@ for (const line of envContent.split("\n")) {
 	process.env[key] = value;
 }
 
-const mod = await import("../netlify/functions/compute-gaps.ts");
-const handler = mod.default;
-const response = await handler(new Request("http://localhost/api/compute-gaps"), {} as any);
-const body = await response.text();
-console.log(body);
+await import("./compute-gaps.ts");

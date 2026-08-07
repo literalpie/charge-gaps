@@ -1,4 +1,3 @@
-import type { Context } from "@netlify/functions";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -169,7 +168,7 @@ function generateTimeBuckets(): TimeBucket[] {
 	return buckets;
 }
 
-function computeGaps(
+function computeGapsForGrid(
 	grid: { lat: number; lng: number }[],
 	stations: Station[],
 ): GeoJsonFeature[] {
@@ -197,13 +196,10 @@ function computeGaps(
 	return gapFeatures;
 }
 
-export default async (_req: Request, _context: Context) => {
+export default async function computeGaps() {
 	const apiKey = process.env.NREL_API_KEY;
 	if (!apiKey) {
-		return new Response(
-			JSON.stringify({ error: "NREL_API_KEY not set" }),
-			{ status: 500, headers: { "Content-Type": "application/json" } },
-		);
+		throw new Error("NREL_API_KEY not set");
 	}
 
 	const scope = OHIO_ONLY ? "Ohio" : "US";
@@ -234,7 +230,7 @@ export default async (_req: Request, _context: Context) => {
 			return new Date(s.open_date) <= bucket.cutoff;
 		});
 
-		const gaps = computeGaps(grid, stationsAtTime);
+		const gaps = computeGapsForGrid(grid, stationsAtTime);
 
 		const geojson: GeoJsonFeatureCollection = {
 			type: "FeatureCollection",
@@ -278,12 +274,6 @@ export default async (_req: Request, _context: Context) => {
 		outputDir,
 	};
 	console.log("Done:", summary);
+}
 
-	return new Response(JSON.stringify(summary), {
-		headers: { "Content-Type": "application/json" },
-	});
-};
-
-export const config = {
-	path: "/api/compute-gaps",
-};
+computeGaps();
