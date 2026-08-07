@@ -10,7 +10,7 @@ dist-ssr
 .output
 .vinxi
 __unconfig*
-netlify/functions/.station-cache.json
+.station-cache.json
 
 # Local Netlify folder
 .netlify

@@ -80,7 +80,7 @@ function generateGrid(
 }
 
 const CACHE_PATH = join(
-	import.meta.dirname ?? process.cwd(),
+	process.cwd(),
 	".station-cache.json",
 );
 
