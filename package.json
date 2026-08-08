@@ -33,6 +33,7 @@
     "@netlify/vite-plugin-tanstack-start": "^1.2.15",
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-cli": "^1.133.21",
+    "@types/geojson": "^7946.0.16",
     "@types/maplibre-gl": "^1.14.0",
     "netlify-cli": "^27.1.0",
     "typescript": "^6.0.2",

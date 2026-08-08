@@ -1,11 +1,33 @@
 import { createEffect, onCleanup, onMount, type JSX } from "solid-js";
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import type { Feature, FeatureCollection, Point } from "geojson";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 setWorkerUrl(workerUrl);
 
 type GapData = Parameters<GeoJSONSource["setData"]>[0];
+
+const HALF_LNG = 5 / 53;
+const HALF_LAT = 5 / 69;
+
+function toSquares(fc: GapData): GapData {
+	const features = (fc as FeatureCollection).features.map<Feature>((f) => {
+		const [lng, lat] = (f.geometry as Point).coordinates;
+		const c = [
+			[lng - HALF_LNG, lat - HALF_LAT],
+			[lng + HALF_LNG, lat - HALF_LAT],
+			[lng + HALF_LNG, lat + HALF_LAT],
+			[lng - HALF_LNG, lat + HALF_LAT],
+		];
+		return {
+			type: "Feature",
+			properties: f.properties ?? {},
+			geometry: { type: "Polygon", coordinates: [c] },
+		} satisfies Feature;
+	});
+	return { ...(fc as FeatureCollection), features } as FeatureCollection;
+}
 
 const gapCache = new Map<string, GapData>();
 
@@ -29,7 +51,7 @@ export default function ChargeGapMap(props: MapProps) {
 			if (!geojson) {
 				const res = await fetch(url);
 				if (!res.ok) return;
-				geojson = await res.json();
+				geojson = toSquares(await res.json());
 				gapCache.set(url, geojson);
 			}
 
@@ -39,20 +61,11 @@ export default function ChargeGapMap(props: MapProps) {
 				map.addSource("gaps", { type: "geojson", data: geojson });
 				map.addLayer({
 					id: "gap-points",
-					type: "circle",
+					type: "fill",
 					source: "gaps",
 					paint: {
-						"circle-radius": [
-							"interpolate",
-							["linear"],
-							["zoom"],
-							4, 3,
-							7, 8,
-							10, 14,
-						],
-						"circle-color": "#ef4444",
-						"circle-opacity": 0.7,
-						"circle-stroke-width": 0,
+						"fill-color": "#ef4444",
+						"fill-opacity": 0.3,
 					},
 				});
 			}

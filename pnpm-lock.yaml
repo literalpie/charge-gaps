@@ -57,6 +57,9 @@ importers:
       '@tanstack/router-cli':
         specifier: ^1.133.21
         version: 1.167.22(supports-color@10.2.2)
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
       '@types/maplibre-gl':
         specifier: ^1.14.0
         version: 1.14.0
