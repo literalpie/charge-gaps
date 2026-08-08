@@ -1,5 +1,5 @@
 import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { fetchGapsManifest, type ManifestEntry } from "../lib/gaps";
+import { fetchCoverageManifest, type ManifestEntry } from "../lib/coverage";
 
 type Bucket = ManifestEntry;
 
@@ -23,7 +23,7 @@ export default function Scrubber(props: ScrubberProps) {
 
 	onMount(async () => {
 		try {
-			const manifest = await fetchGapsManifest();
+			const manifest = await fetchCoverageManifest();
 			const data = manifest.buckets;
 			setBuckets(data);
 			if (data.length > 0) {

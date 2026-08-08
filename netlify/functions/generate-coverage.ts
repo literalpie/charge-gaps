@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import type { Config } from "@netlify/functions";
-import { computeAllGaps } from "../../scripts/gaps-core";
+import { computeAllCoverage } from "../../scripts/coverage-core";
 
 export default async () => {
 	const apiKey = process.env.NREL_API_KEY;
@@ -12,9 +12,9 @@ export default async () => {
 		});
 	}
 
-	const { manifest, data, totalStations } = await computeAllGaps(apiKey);
+	const { manifest, data, totalStations } = await computeAllCoverage(apiKey);
 
-	const store = getStore({ name: "gaps" });
+	const store = getStore({ name: "coverage" });
 
 	await store.setJSON("manifest.json", manifest);
 	for (const [key, bits] of data) {

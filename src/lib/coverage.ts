@@ -1,4 +1,4 @@
-const FN = "/.netlify/functions/gaps";
+const FN = "/.netlify/functions/coverage";
 
 export interface GridSpec {
 	west: number;
@@ -23,21 +23,21 @@ export interface CoverageManifest {
 	buckets: ManifestEntry[];
 }
 
-export function gapsDataUrl(key: string) {
-	if (import.meta.env.DEV) return `/data/gaps/${key}.json`;
+export function coverageDataUrl(key: string) {
+	if (import.meta.env.DEV) return `/data/coverage/${key}.json`;
 	return `${FN}?key=${key}.json`;
 }
 
-export function gapsManifestUrl() {
-	if (import.meta.env.DEV) return "/data/gaps/manifest.json";
+export function coverageManifestUrl() {
+	if (import.meta.env.DEV) return "/data/coverage/manifest.json";
 	return `${FN}?key=manifest.json`;
 }
 
 let manifestPromise: Promise<CoverageManifest> | undefined;
 
-export function fetchGapsManifest(): Promise<CoverageManifest> {
+export function fetchCoverageManifest(): Promise<CoverageManifest> {
 	if (!manifestPromise) {
-		manifestPromise = fetch(gapsManifestUrl()).then((res) => {
+		manifestPromise = fetch(coverageManifestUrl()).then((res) => {
 			if (!res.ok) throw new Error(`Manifest error: ${res.status}`);
 			return res.json() as Promise<CoverageManifest>;
 		});

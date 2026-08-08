@@ -3,17 +3,17 @@ import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource
 import type { Feature, FeatureCollection } from "geojson";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { fetchGapsManifest, type GridSpec } from "../lib/gaps";
+import { fetchCoverageManifest, type GridSpec } from "../lib/coverage";
 
 setWorkerUrl(workerUrl);
 
-type GapData = Parameters<GeoJSONSource["setData"]>[0];
+type CoverageData = Parameters<GeoJSONSource["setData"]>[0];
 
 function isCovered(bits: number[], index: number): boolean {
 	return (bits[index >> 5] >>> (index & 31)) & 1 ? true : false;
 }
 
-function buildSquares(grid: GridSpec, bits: number[]): GapData {
+function buildSquares(grid: GridSpec, bits: number[]): CoverageData {
 	const features: Feature[] = [];
 	const halfLat = grid.latStep / 2;
 	const halfLng = grid.lngStep / 2;
@@ -40,7 +40,7 @@ function buildSquares(grid: GridSpec, bits: number[]): GapData {
 	return { type: "FeatureCollection", features } as FeatureCollection;
 }
 
-const gapCache = new Map<string, GapData>();
+const coverageCache = new Map<string, CoverageData>();
 const bitsCache = new Map<string, number[]>();
 
 interface MapProps {
@@ -88,15 +88,15 @@ export default function ChargeGapMap(props: MapProps) {
 		if (!currentUrl) return;
 		const bits = bitsCache.get(currentUrl);
 		if (!bits) return;
-		fetchGapsManifest().then((manifest) => {
+		fetchCoverageManifest().then((manifest) => {
 			setCoveragePct(computeCoverage(manifest.grid, bits));
 		});
 	}
 
-	async function loadGaps(url: string) {
+	async function loadCoverage(url: string) {
 		if (!map) return;
 		try {
-			const manifest = await fetchGapsManifest();
+			const manifest = await fetchCoverageManifest();
 			const grid = manifest.grid;
 
 			let bits = bitsCache.get(url);
@@ -108,20 +108,20 @@ export default function ChargeGapMap(props: MapProps) {
 			}
 			currentUrl = url;
 
-			let geojson = gapCache.get(url);
+			let geojson = coverageCache.get(url);
 			if (!geojson) {
 				geojson = buildSquares(grid, bits);
-				gapCache.set(url, geojson);
+				coverageCache.set(url, geojson);
 			}
 
-			if (map.getSource("gaps")) {
-				(map.getSource("gaps") as GeoJSONSource).setData(geojson);
+			if (map.getSource("coverage")) {
+				(map.getSource("coverage") as GeoJSONSource).setData(geojson);
 			} else {
-				map.addSource("gaps", { type: "geojson", data: geojson });
+				map.addSource("coverage", { type: "geojson", data: geojson });
 				map.addLayer({
-					id: "gap-points",
+					id: "coverage-cells",
 					type: "fill",
-					source: "gaps",
+					source: "coverage",
 					paint: {
 						"fill-color": "#3b82f6",
 						"fill-opacity": 0.3,
@@ -130,7 +130,7 @@ export default function ChargeGapMap(props: MapProps) {
 			}
 			updateCoverage();
 		} catch (e) {
-			console.warn("Could not load gap data:", e);
+			console.warn("Could not load coverage data:", e);
 		}
 	}
 
@@ -161,14 +161,14 @@ export default function ChargeGapMap(props: MapProps) {
 
 		map.on("load", () => {
 			loaded = true;
-			if (props.dataUrl) loadGaps(props.dataUrl);
+			if (props.dataUrl) loadCoverage(props.dataUrl);
 		});
 	});
 
 	createEffect(() => {
 		const url = props.dataUrl;
 		if (loaded && url) {
-			loadGaps(url);
+			loadCoverage(url);
 		}
 	});
 

@@ -1,4 +1,4 @@
-const GAP_THRESHOLD_MILES = 20;
+const COVERAGE_RADIUS_MILES = 20;
 const GRID_SPACING_MILES = 10;
 const EARTH_RADIUS_MILES = 3959;
 const CELL_DEG = 0.25;
@@ -140,11 +140,11 @@ class StationIndex {
 
 	/**
 	 * Search for the nearest station to (lat, lng), expanding outward
-	 * cell by cell. Returns once the gap decision is certain (a station
-	 * within GAP_THRESHOLD_MILES is found) or the search area can no
-	 * longer contain a closer station.
+	 * cell by cell. Returns once the coverage decision is certain (a
+	 * station within COVERAGE_RADIUS_MILES is found) or the search area
+	 * can no longer contain a closer station.
 	 */
-	nearest(lat: number, lng: number): { isGap: boolean; distance: number } {
+	nearest(lat: number, lng: number): { isCovered: boolean; distance: number } {
 		const cx = Math.floor(lat / CELL_DEG);
 		const cy = Math.floor(lng / CELL_DEG);
 		const qLatRad = toRad(lat);
@@ -173,8 +173,8 @@ class StationIndex {
 							Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 						if (d < best) {
 							best = d;
-							if (best <= GAP_THRESHOLD_MILES) {
-								return { isGap: false, distance: best };
+							if (best <= COVERAGE_RADIUS_MILES) {
+								return { isCovered: true, distance: best };
 							}
 						}
 					}
@@ -183,7 +183,7 @@ class StationIndex {
 		}
 
 		return {
-			isGap: best > GAP_THRESHOLD_MILES,
+			isCovered: best <= COVERAGE_RADIUS_MILES,
 			distance: Number.isFinite(best) ? best : NaN,
 		};
 	}
@@ -198,7 +198,7 @@ function computeCoverageBits(
 	for (let i = 0; i < grid.length; i++) {
 		const point = grid[i];
 		const nearest = index.nearest(point.lat, point.lng);
-		if (!nearest.isGap) {
+		if (nearest.isCovered) {
 			words[i >> 5] |= 1 << (i & 31);
 		}
 	}
@@ -271,7 +271,7 @@ async function fetchStations(apiKey: string): Promise<Station[]> {
 	return stations;
 }
 
-export async function computeAllGaps(
+export async function computeAllCoverage(
 	apiKey: string,
 ): Promise<{
 	manifest: CoverageManifest;
@@ -284,7 +284,7 @@ export async function computeAllGaps(
 
 	const grid = generateGrid(US_BOUNDS, GRID_SPACING_MILES);
 	const gridSpec = gridSpecFrom(grid, GRID_SPACING_MILES);
-	console.log(`Generated ${grid.length} land grid points (ocean points filtered)`);
+	console.log(`Generated ${grid.length} grid points`);
 
 	stations.sort((a, b) => {
 		if (!a.open_date && !b.open_date) return 0;

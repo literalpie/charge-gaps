@@ -3,7 +3,7 @@ import { createMemo } from "solid-js";
 import Map from "../components/Map";
 import Legend from "../components/Legend";
 import Scrubber from "../components/Scrubber";
-import { gapsDataUrl } from "../lib/gaps";
+import { coverageDataUrl } from "../lib/coverage";
 
 export const Route = createFileRoute("/")({
 	validateSearch: (search: Record<string, unknown>) => ({
@@ -17,7 +17,7 @@ function Home() {
 	const navigate = useNavigate({ from: "/" });
 	const dataUrl = createMemo(() => {
 		const date = search().date;
-		return date ? gapsDataUrl(date) : "";
+		return date ? coverageDataUrl(date) : "";
 	});
 
 	return (

@@ -18,8 +18,8 @@ export const Route = createRootRouteWithContext()({
   head: () => ({
     meta: [
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { name: 'description', content: 'EV charging gaps map' },
-      { title: 'Charge Gaps' },
+      { name: 'description', content: 'EV charger coverage map' },
+      { title: 'Charger Coverage' },
     ],
     links: [{ rel: 'stylesheet', href: styleCss }],
   }),

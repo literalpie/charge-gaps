@@ -8,7 +8,7 @@ export default async () => {
 		return;
 	}
 
-	const res = await fetch(`${baseUrl}/.netlify/functions/generate-gaps`, {
+	const res = await fetch(`${baseUrl}/.netlify/functions/generate-coverage`, {
 		method: "POST",
 	});
 	console.log("Triggered background function:", res.status);

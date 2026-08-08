@@ -10,7 +10,7 @@ export default async (req: Request) => {
 		return new Response("Invalid key", { status: 400 });
 	}
 
-	const store = getStore({ name: "gaps" });
+	const store = getStore({ name: "coverage" });
 	const blob = await store.get(key, { type: "text" });
 
 	if (blob === null) {

@@ -1,5 +1,5 @@
 {
-  "projectName": "charge-gaps",
+  "projectName": "charge-coverage",
   "mode": "file-router",
   "typescript": true,
   "packageManager": "pnpm",

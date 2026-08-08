@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { computeAllGaps } from "./gaps-core.ts";
+import { computeAllCoverage } from "./coverage-core.ts";
 
 const envPath = resolve(import.meta.dirname, "../.env");
 try {
@@ -23,9 +23,9 @@ if (!apiKey) {
 	throw new Error("NREL_API_KEY not set");
 }
 
-const { manifest, data, totalStations } = await computeAllGaps(apiKey);
+const { manifest, data, totalStations } = await computeAllCoverage(apiKey);
 
-const outputDir = join(process.cwd(), "public", "data", "gaps");
+const outputDir = join(process.cwd(), "public", "data", "coverage");
 mkdirSync(outputDir, { recursive: true });
 
 writeFileSync(join(outputDir, "manifest.json"), JSON.stringify(manifest));
