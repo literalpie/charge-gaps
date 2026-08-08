@@ -1,9 +1,13 @@
 import { createEffect, onCleanup, onMount, type JSX } from "solid-js";
-import { Map, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 setWorkerUrl(workerUrl);
+
+type GapData = Parameters<GeoJSONSource["setData"]>[0];
+
+const gapCache = new Map<string, GapData>();
 
 interface MapProps {
 	center?: [number, number];
@@ -15,15 +19,19 @@ interface MapProps {
 
 export default function ChargeGapMap(props: MapProps) {
 	let container: HTMLDivElement | undefined;
-	let map: Map | undefined;
+	let map: MapLibreMap | undefined;
 	let loaded = false;
 
 	async function loadGaps(url: string) {
 		if (!map) return;
 		try {
-			const res = await fetch(url);
-			if (!res.ok) return;
-			const geojson = await res.json();
+			let geojson = gapCache.get(url);
+			if (!geojson) {
+				const res = await fetch(url);
+				if (!res.ok) return;
+				geojson = await res.json();
+				gapCache.set(url, geojson);
+			}
 
 			if (map.getSource("gaps")) {
 				(map.getSource("gaps") as GeoJSONSource).setData(geojson);
@@ -56,7 +64,7 @@ export default function ChargeGapMap(props: MapProps) {
 	onMount(() => {
 		if (!container) return;
 
-		map = new Map({
+		map = new MapLibreMap({
 			container,
 			style: {
 				version: 8,

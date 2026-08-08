@@ -4,7 +4,7 @@ import { join } from "node:path";
 const OHIO_ONLY = false;
 const CURRENT_ONLY = false;
 const GAP_THRESHOLD_MILES = 20;
-const GRID_SPACING_MILES = 5;
+const GRID_SPACING_MILES = 10;
 const EARTH_RADIUS_MILES = 3959;
 
 interface Station {
@@ -21,9 +21,6 @@ interface GeoJsonFeature {
 	geometry: { type: "Point"; coordinates: [number, number] };
 	properties: {
 		nearestChargerMi: number;
-		nearestChargerName: string;
-		lat: number;
-		lng: number;
 	};
 }
 
@@ -181,13 +178,13 @@ function computeGapsForGrid(
 				type: "Feature",
 				geometry: {
 					type: "Point",
-					coordinates: [point.lng, point.lat],
+					coordinates: [
+						Math.round(point.lng * 1000) / 1000,
+						Math.round(point.lat * 1000) / 1000,
+					],
 				},
 				properties: {
 					nearestChargerMi: Math.round(nearest.distance * 10) / 10,
-					nearestChargerName: nearest.name,
-					lat: point.lat,
-					lng: point.lng,
 				},
 			});
 		}
