@@ -11,22 +11,33 @@ type GapData = Parameters<GeoJSONSource["setData"]>[0];
 const HALF_LNG = 5 / 53;
 const HALF_LAT = 5 / 69;
 
-function toSquares(fc: GapData): GapData {
-	const features = (fc as FeatureCollection).features.map((f) => {
+function toCoverageSquares(fc: GapData): GapData {
+	const gapKeys = new Set<string>();
+	for (const f of (fc as FeatureCollection).features) {
 		const [lng, lat] = (f.geometry as Point).coordinates;
-		const c = [
-			[lng - HALF_LNG, lat - HALF_LAT],
-			[lng + HALF_LNG, lat - HALF_LAT],
-			[lng + HALF_LNG, lat + HALF_LAT],
-			[lng - HALF_LNG, lat + HALF_LAT],
-		];
-		return {
-			type: "Feature",
-			properties: f.properties ?? {},
-			geometry: { type: "Polygon", coordinates: [c] },
-		} as Feature;
-	});
-	return { ...(fc as FeatureCollection), features } as FeatureCollection;
+		gapKeys.add(`${Math.round(lng * 1000) / 1000},${Math.round(lat * 1000) / 1000}`);
+	}
+
+	const features: Feature[] = [];
+	for (let lat = US_BOUNDS.south; lat <= US_BOUNDS.north; lat += LAT_STEP) {
+		const latKey = Math.round(lat * 1000) / 1000;
+		for (let lng = US_BOUNDS.west; lng <= US_BOUNDS.east; lng += LNG_STEP) {
+			const lngKey = Math.round(lng * 1000) / 1000;
+			if (gapKeys.has(`${lngKey},${latKey}`)) continue;
+			const c = [
+				[lng - HALF_LNG, lat - HALF_LAT],
+				[lng + HALF_LNG, lat - HALF_LAT],
+				[lng + HALF_LNG, lat + HALF_LAT],
+				[lng - HALF_LNG, lat + HALF_LAT],
+			];
+			features.push({
+				type: "Feature",
+				properties: {},
+				geometry: { type: "Polygon", coordinates: [c] },
+			} as Feature);
+		}
+	}
+	return { type: "FeatureCollection", features } as FeatureCollection;
 }
 
 const gapCache = new Map<string, GapData>();
@@ -96,7 +107,7 @@ export default function ChargeGapMap(props: MapProps) {
 				if (!res.ok) return;
 				const raw = (await res.json()) as GapData;
 				rawCache.set(url, raw);
-				geojson = toSquares(raw);
+				geojson = toCoverageSquares(raw);
 				gapCache.set(url, geojson);
 			}
 			currentUrl = url;
@@ -110,7 +121,7 @@ export default function ChargeGapMap(props: MapProps) {
 					type: "fill",
 					source: "gaps",
 					paint: {
-						"fill-color": "#ef4444",
+						"fill-color": "#3b82f6",
 						"fill-opacity": 0.3,
 					},
 				});

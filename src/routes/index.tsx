@@ -25,7 +25,7 @@ function Home() {
 			<Map center={[-96, 38]} zoom={3.95} dataUrl={dataUrl()} />
 			<div class="absolute top-4 left-4 z-10">
 				<h1 class="text-lg font-bold bg-white/90 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 mb-2">
-					EV Charging Gaps
+					EV Fast Charger Coverage
 				</h1>
 				<Legend />
 			</div>
