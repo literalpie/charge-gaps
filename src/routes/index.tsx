@@ -3,11 +3,12 @@ import { createSignal } from "solid-js";
 import Map from "../components/Map";
 import Legend from "../components/Legend";
 import Scrubber from "../components/Scrubber";
+import { gapsDataUrl } from "../lib/gaps";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
-	const [dataUrl, setDataUrl] = createSignal("/data/gaps.json");
+	const [dataUrl, setDataUrl] = createSignal("");
 
 	return (
 		<div class="relative w-full h-screen">
@@ -19,7 +20,7 @@ function Home() {
 				<Legend />
 			</div>
 			<div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 w-[90%] max-w-xl">
-				<Scrubber onChange={(key) => setDataUrl(`/data/gaps/${key}.json`)} />
+				<Scrubber onChange={(key) => setDataUrl(gapsDataUrl(key))} />
 			</div>
 		</div>
 	);

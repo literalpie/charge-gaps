@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
+import { gapsManifestUrl } from "../lib/gaps";
 
 interface Bucket {
 	key: string;
@@ -19,7 +20,7 @@ export default function Scrubber(props: ScrubberProps) {
 
 	onMount(async () => {
 		try {
-			const res = await fetch("/data/gaps/manifest.json");
+			const res = await fetch(gapsManifestUrl());
 			if (!res.ok) return;
 			const data = (await res.json()) as Bucket[];
 			setBuckets(data);

@@ -86,7 +86,7 @@ export default function ChargeGapMap(props: MapProps) {
 
 		map.on("load", () => {
 			loaded = true;
-			loadGaps(props.dataUrl ?? "/data/gaps.json");
+			if (props.dataUrl) loadGaps(props.dataUrl);
 		});
 	});
 

@@ -1,4 +1,6 @@
 allowBuilds:
   esbuild: true
   lightningcss: true
+  netlify-cli: true
   sharp: true
+  unix-dgram: true

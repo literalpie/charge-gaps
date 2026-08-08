@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 3000",
+    "netlify": "netlify",
     "generate-routes": "tsr generate",
-    "generate-gaps": "node --experimental-strip-types scripts/run-compute-gaps.ts",
+    "generate-gaps": "node --experimental-strip-types scripts/generate-gaps.ts",
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "preview": "vite preview",
@@ -15,6 +16,7 @@
   },
   "dependencies": {
     "@msviderok/base-ui-solid": "1.0.0-beta.12",
+    "@netlify/blobs": "^10.7.12",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/solid-query": "latest",
     "@tanstack/solid-query-devtools": "latest",
@@ -32,15 +34,9 @@
     "@tanstack/devtools-vite": "latest",
     "@tanstack/router-cli": "^1.133.21",
     "@types/maplibre-gl": "^1.14.0",
+    "netlify-cli": "^27.1.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vite-plugin-solid": "^2.11.12"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "lightningcss",
-      "sharp"
-    ]
   }
 }
