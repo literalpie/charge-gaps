@@ -1,6 +1,8 @@
 const GAP_THRESHOLD_MILES = 20;
 const GRID_SPACING_MILES = 10;
 const EARTH_RADIUS_MILES = 3959;
+const CELL_DEG = 0.25;
+const MILES_PER_DEG_LNG = 53;
 
 export interface Station {
 	latitude: number;
@@ -12,7 +14,7 @@ export interface Station {
 export interface GapFeature {
 	type: "Feature";
 	geometry: { type: "Point"; coordinates: [number, number] };
-	properties: { nearestChargerMi: number };
+	properties: { nearestChargerMi: number | null };
 }
 
 export interface GapFeatureCollection {
@@ -39,21 +41,7 @@ const US_BOUNDS = {
 	west: -124.7,
 };
 
-function haversine(
-	lat1: number,
-	lon1: number,
-	lat2: number,
-	lon2: number,
-): number {
-	const toRad = (deg: number) => (deg * Math.PI) / 180;
-	const dLat = toRad(lat2 - lat1);
-	const dLon = toRad(lon2 - lon1);
-	const a =
-		Math.sin(dLat / 2) ** 2 +
-		Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-	const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-	return EARTH_RADIUS_MILES * c;
-}
+const toRad = (deg: number) => (deg * Math.PI) / 180;
 
 function generateGrid(
 	bounds: typeof US_BOUNDS,
@@ -71,62 +59,107 @@ function generateGrid(
 	return points;
 }
 
-async function fetchStations(apiKey: string): Promise<Station[]> {
-	const stations: Station[] = [];
-	let offset = 1;
-	let total = Infinity;
-
-	while (offset <= total) {
-		const url = new URL(
-			"https://developer.nlr.gov/api/alt-fuel-stations/v1.json",
-		);
-		url.searchParams.set("api_key", apiKey);
-		url.searchParams.set("fuel_type", "ELEC");
-		url.searchParams.set("ev_charging_level", "dc_fast");
-		url.searchParams.set("ev_power_kw_min", "100");
-		url.searchParams.set("status", "E");
-		url.searchParams.set("access", "public");
-		url.searchParams.set("limit", "200");
-		url.searchParams.set("offset", String(offset));
-
-		console.log(`Fetching stations offset=${offset}...`);
-		const res = await fetch(url.toString());
-		if (!res.ok) throw new Error(`NREL API error: ${res.status}`);
-		const data = await res.json();
-
-		total = data.total_results ?? 0;
-		const fuelStations: Station[] = data.fuel_stations ?? [];
-		stations.push(...fuelStations);
-		offset += fuelStations.length;
-
-		if (fuelStations.length === 0) break;
-	}
-
-	return stations;
+interface IndexedStation {
+	lat: number;
+	lng: number;
+	latRad: number;
+	lngRad: number;
 }
 
-function findNearestChargerDistance(
-	lat: number,
-	lng: number,
-	stations: Station[],
-): number {
-	let minDist = Infinity;
-	for (const s of stations) {
-		const d = haversine(lat, lng, s.latitude, s.longitude);
-		if (d < minDist) minDist = d;
+/**
+ * Stations bucketed into a uniform lat/lng grid so nearest-neighbor
+ * searches only touch nearby cells instead of every station.
+ */
+class StationIndex {
+	private cells = new Map<number, IndexedStation[]>();
+
+	private static cellKey(cx: number, cy: number) {
+		return cx * 2000 + (cy + 1000);
 	}
-	return minDist;
+
+	constructor(stations: Station[]) {
+		for (const s of stations) {
+			const cx = Math.floor(s.latitude / CELL_DEG);
+			const cy = Math.floor(s.longitude / CELL_DEG);
+			const key = StationIndex.cellKey(cx, cy);
+			let bucket = this.cells.get(key);
+			if (!bucket) {
+				bucket = [];
+				this.cells.set(key, bucket);
+			}
+			bucket.push({
+				lat: s.latitude,
+				lng: s.longitude,
+				latRad: toRad(s.latitude),
+				lngRad: toRad(s.longitude),
+			});
+		}
+	}
+
+	private get(cx: number, cy: number): IndexedStation[] | undefined {
+		return this.cells.get(StationIndex.cellKey(cx, cy));
+	}
+
+	/**
+	 * Search for the nearest station to (lat, lng), expanding outward
+	 * cell by cell. Returns once the gap decision is certain (a station
+	 * within GAP_THRESHOLD_MILES is found) or the search area can no
+	 * longer contain a closer station.
+	 */
+	nearest(lat: number, lng: number): { isGap: boolean; distance: number } {
+		const cx = Math.floor(lat / CELL_DEG);
+		const cy = Math.floor(lng / CELL_DEG);
+		const qLatRad = toRad(lat);
+		const qLngRad = toRad(lng);
+		const qCosLat = Math.cos(qLatRad);
+		let best = Infinity;
+
+		const maxRings = 300;
+		for (let r = 0; r < maxRings; r++) {
+			if (r > 0 && (r - 1) * CELL_DEG * MILES_PER_DEG_LNG > best) break;
+
+			for (let dx = -r; dx <= r; dx++) {
+				for (let dy = -r; dy <= r; dy++) {
+					if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+					const cellStations = this.get(cx + dx, cy + dy);
+					if (!cellStations) continue;
+					for (const s of cellStations) {
+						const dLat = s.latRad - qLatRad;
+						const dLng = s.lngRad - qLngRad;
+						const a =
+							Math.sin(dLat / 2) ** 2 +
+							qCosLat * Math.cos(s.latRad) * Math.sin(dLng / 2) ** 2;
+						const d =
+							EARTH_RADIUS_MILES *
+							2 *
+							Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+						if (d < best) {
+							best = d;
+							if (best <= GAP_THRESHOLD_MILES) {
+								return { isGap: false, distance: best };
+							}
+						}
+					}
+				}
+			}
+		}
+
+		return {
+			isGap: best > GAP_THRESHOLD_MILES,
+			distance: Number.isFinite(best) ? best : NaN,
+		};
+	}
 }
 
 function computeGapsForGrid(
 	grid: { lat: number; lng: number }[],
-	stations: Station[],
+	index: StationIndex,
 ): GapFeature[] {
 	const gapFeatures: GapFeature[] = [];
 
 	for (const point of grid) {
-		const distance = findNearestChargerDistance(point.lat, point.lng, stations);
-		if (distance > GAP_THRESHOLD_MILES) {
+		const nearest = index.nearest(point.lat, point.lng);
+		if (nearest.isGap) {
 			gapFeatures.push({
 				type: "Feature",
 				geometry: {
@@ -137,7 +170,9 @@ function computeGapsForGrid(
 					],
 				},
 				properties: {
-					nearestChargerMi: Math.round(distance * 10) / 10,
+					nearestChargerMi: Number.isFinite(nearest.distance)
+						? Math.round(nearest.distance * 10) / 10
+						: null,
 				},
 			});
 		}
@@ -168,6 +203,49 @@ export function generateTimeBuckets(now = new Date()): TimeBucket[] {
 	return buckets;
 }
 
+async function fetchPage(
+	apiKey: string,
+	offset: number,
+): Promise<{ items: Station[]; total: number }> {
+	const url = new URL("https://developer.nlr.gov/api/alt-fuel-stations/v1.json");
+	url.searchParams.set("api_key", apiKey);
+	url.searchParams.set("fuel_type", "ELEC");
+	url.searchParams.set("ev_charging_level", "dc_fast");
+	url.searchParams.set("ev_power_kw_min", "100");
+	url.searchParams.set("status", "E");
+	url.searchParams.set("access", "public");
+	url.searchParams.set("limit", "200");
+	url.searchParams.set("offset", String(offset));
+
+	const res = await fetch(url.toString());
+	if (!res.ok) throw new Error(`NREL API error: ${res.status}`);
+	const data = await res.json();
+
+	return {
+		items: (data.fuel_stations ?? []) as Station[],
+		total: data.total_results ?? 0,
+	};
+}
+
+async function fetchStations(apiKey: string): Promise<Station[]> {
+	const first = await fetchPage(apiKey, 1);
+	const stations: Station[] = [...first.items];
+
+	const offsets: number[] = [];
+	for (let offset = 201; offset <= first.total; offset += 200) {
+		offsets.push(offset);
+	}
+
+	const CONCURRENCY = 10;
+	for (let i = 0; i < offsets.length; i += CONCURRENCY) {
+		const chunk = offsets.slice(i, i + CONCURRENCY);
+		const pages = await Promise.all(chunk.map((o) => fetchPage(apiKey, o)));
+		for (const page of pages) stations.push(...page.items);
+	}
+
+	return stations;
+}
+
 export async function computeAllGaps(
 	apiKey: string,
 ): Promise<{
@@ -183,18 +261,36 @@ export async function computeAllGaps(
 	const grid = generateGrid(US_BOUNDS, GRID_SPACING_MILES);
 	console.log(`Generated ${grid.length} land grid points (ocean points filtered)`);
 
+	stations.sort((a, b) => {
+		if (!a.open_date && !b.open_date) return 0;
+		if (!a.open_date) return -1;
+		if (!b.open_date) return 1;
+		return a.open_date.localeCompare(b.open_date);
+	});
+
 	const buckets = generateTimeBuckets();
 	const manifest: ManifestEntry[] = [];
 	const data = new Map<string, GapFeatureCollection>();
 
 	for (let i = 0; i < buckets.length; i++) {
 		const bucket = buckets[i];
-		const stationsAtTime = stations.filter((s) => {
-			if (!s.open_date) return true;
-			return new Date(s.open_date) <= bucket.cutoff;
-		});
+		const cutoffTime = bucket.cutoff.getTime();
 
-		const gaps = computeGapsForGrid(grid, stationsAtTime);
+		let lo = 0;
+		let hi = stations.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			const sd = stations[mid].open_date;
+			if (sd === null || new Date(sd).getTime() <= cutoffTime) {
+				lo = mid + 1;
+			} else {
+				hi = mid;
+			}
+		}
+
+		const stationsAtTime = stations.slice(0, lo);
+		const index = new StationIndex(stationsAtTime);
+		const gaps = computeGapsForGrid(grid, index);
 
 		data.set(bucket.key, {
 			type: "FeatureCollection",
