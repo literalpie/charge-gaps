@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, onMount, type JSX } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import type { Feature, FeatureCollection, Point } from "geojson";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
@@ -12,7 +12,7 @@ const HALF_LNG = 5 / 53;
 const HALF_LAT = 5 / 69;
 
 function toSquares(fc: GapData): GapData {
-	const features = (fc as FeatureCollection).features.map<Feature>((f) => {
+	const features = (fc as FeatureCollection).features.map((f) => {
 		const [lng, lat] = (f.geometry as Point).coordinates;
 		const c = [
 			[lng - HALF_LNG, lat - HALF_LAT],
@@ -24,7 +24,7 @@ function toSquares(fc: GapData): GapData {
 			type: "Feature",
 			properties: f.properties ?? {},
 			geometry: { type: "Polygon", coordinates: [c] },
-		} satisfies Feature;
+		} as Feature;
 	});
 	return { ...(fc as FeatureCollection), features } as FeatureCollection;
 }
@@ -43,6 +43,7 @@ export default function ChargeGapMap(props: MapProps) {
 	let container: HTMLDivElement | undefined;
 	let map: MapLibreMap | undefined;
 	let loaded = false;
+	const [zoomLevel, setZoomLevel] = createSignal(props.zoom ?? 3.95);
 
 	async function loadGaps(url: string) {
 		if (!map) return;
@@ -92,10 +93,14 @@ export default function ChargeGapMap(props: MapProps) {
 				layers: [{ id: "osm", type: "raster", source: "osm" }],
 			},
 			center: props.center ?? [-98, 39],
-			zoom: props.zoom ?? 5,
+			zoom: props.zoom ?? 3.95,
 		});
 
 		map.addControl(new NavigationControl(), "top-right");
+
+		map.on("zoom", () => {
+			setZoomLevel(map?.getZoom() ?? 0);
+		});
 
 		map.on("load", () => {
 			loaded = true;
@@ -120,6 +125,9 @@ export default function ChargeGapMap(props: MapProps) {
 			class={props.class}
 			style={{ width: "100%", height: "100%" }}
 		>
+			<div class="absolute bottom-4 right-4 z-10 bg-black/70 text-white text-sm font-mono px-2 py-1 rounded">
+				zoom: {zoomLevel().toFixed(2)}
+			</div>
 			{props.children}
 		</div>
 	);
