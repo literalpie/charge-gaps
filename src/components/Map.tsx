@@ -1,34 +1,34 @@
 import { createEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
-import type { Feature, FeatureCollection, Point } from "geojson";
+import type { Feature, FeatureCollection } from "geojson";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { fetchGapsManifest, type GridSpec } from "../lib/gaps";
 
 setWorkerUrl(workerUrl);
 
 type GapData = Parameters<GeoJSONSource["setData"]>[0];
 
-const HALF_LNG = 5 / 53;
-const HALF_LAT = 5 / 69;
+function isCovered(bits: number[], index: number): boolean {
+	return (bits[index >> 5] >>> (index & 31)) & 1 ? true : false;
+}
 
-function toCoverageSquares(fc: GapData): GapData {
-	const gapKeys = new Set<string>();
-	for (const f of (fc as FeatureCollection).features) {
-		const [lng, lat] = (f.geometry as Point).coordinates;
-		gapKeys.add(`${Math.round(lng * 1000) / 1000},${Math.round(lat * 1000) / 1000}`);
-	}
-
+function buildSquares(grid: GridSpec, bits: number[]): GapData {
 	const features: Feature[] = [];
-	for (let lat = US_BOUNDS.south; lat <= US_BOUNDS.north; lat += LAT_STEP) {
-		const latKey = Math.round(lat * 1000) / 1000;
-		for (let lng = US_BOUNDS.west; lng <= US_BOUNDS.east; lng += LNG_STEP) {
-			const lngKey = Math.round(lng * 1000) / 1000;
-			if (gapKeys.has(`${lngKey},${latKey}`)) continue;
+	const halfLat = grid.latStep / 2;
+	const halfLng = grid.lngStep / 2;
+
+	for (let latIdx = 0; latIdx < grid.latCount; latIdx++) {
+		const lat = grid.south + latIdx * grid.latStep;
+		for (let lngIdx = 0; lngIdx < grid.lngCount; lngIdx++) {
+			const index = latIdx * grid.lngCount + lngIdx;
+			if (!isCovered(bits, index)) continue;
+			const lng = grid.west + lngIdx * grid.lngStep;
 			const c = [
-				[lng - HALF_LNG, lat - HALF_LAT],
-				[lng + HALF_LNG, lat - HALF_LAT],
-				[lng + HALF_LNG, lat + HALF_LAT],
-				[lng - HALF_LNG, lat + HALF_LAT],
+				[lng - halfLng, lat - halfLat],
+				[lng + halfLng, lat - halfLat],
+				[lng + halfLng, lat + halfLat],
+				[lng - halfLng, lat + halfLat],
 			];
 			features.push({
 				type: "Feature",
@@ -41,17 +41,7 @@ function toCoverageSquares(fc: GapData): GapData {
 }
 
 const gapCache = new Map<string, GapData>();
-const rawCache = new Map<string, GapData>();
-
-const US_BOUNDS = {
-	north: 49,
-	south: 24.5,
-	east: -66.9,
-	west: -124.7,
-};
-
-const LAT_STEP = 10 / 69;
-const LNG_STEP = 10 / 53;
+const bitsCache = new Map<string, number[]>();
 
 interface MapProps {
 	center?: [number, number];
@@ -68,49 +58,61 @@ export default function ChargeGapMap(props: MapProps) {
 	let currentUrl: string | undefined;
 	const [coveragePct, setCoveragePct] = createSignal<number | null>(null);
 
-	function computeCoverage(): number | null {
-		if (!map || !currentUrl) return null;
-		const raw = rawCache.get(currentUrl);
-		if (!raw) return null;
+	function computeCoverage(grid: GridSpec, bits: number[]): number | null {
+		if (!map) return null;
 		const b = map.getBounds();
-		const west = Math.max(b.getWest(), US_BOUNDS.west);
-		const east = Math.min(b.getEast(), US_BOUNDS.east);
-		const south = Math.max(b.getSouth(), US_BOUNDS.south);
-		const north = Math.min(b.getNorth(), US_BOUNDS.north);
+		const west = Math.max(b.getWest(), grid.west);
+		const east = Math.min(b.getEast(), grid.east);
+		const south = Math.max(b.getSouth(), grid.south);
+		const north = Math.min(b.getNorth(), grid.north);
 		if (west >= east || south >= north) return null;
 
-		const totalLat = Math.floor((north - US_BOUNDS.south) / LAT_STEP) -
-			Math.ceil((south - US_BOUNDS.south) / LAT_STEP) + 1;
-		const totalLng = Math.floor((east - US_BOUNDS.west) / LNG_STEP) -
-			Math.ceil((west - US_BOUNDS.west) / LNG_STEP) + 1;
-		const total = totalLat * totalLng;
-		if (total <= 0) return null;
+		const latStart = Math.max(0, Math.ceil((south - grid.south) / grid.latStep));
+		const latEnd = Math.min(grid.latCount - 1, Math.floor((north - grid.south) / grid.latStep));
+		const lngStart = Math.max(0, Math.ceil((west - grid.west) / grid.lngStep));
+		const lngEnd = Math.min(grid.lngCount - 1, Math.floor((east - grid.west) / grid.lngStep));
+		if (latStart > latEnd || lngStart > lngEnd) return null;
 
-		let gaps = 0;
-		for (const f of (raw as FeatureCollection).features) {
-			const [lng, lat] = (f.geometry as Point).coordinates;
-			if (lng >= west && lng <= east && lat >= south && lat <= north) gaps++;
+		let total = 0;
+		let covered = 0;
+		for (let latIdx = latStart; latIdx <= latEnd; latIdx++) {
+			for (let lngIdx = lngStart; lngIdx <= lngEnd; lngIdx++) {
+				total++;
+				if (isCovered(bits, latIdx * grid.lngCount + lngIdx)) covered++;
+			}
 		}
-		return (1 - gaps / total) * 100;
+		return total > 0 ? (covered / total) * 100 : null;
 	}
 
 	function updateCoverage() {
-		setCoveragePct(computeCoverage());
+		if (!currentUrl) return;
+		const bits = bitsCache.get(currentUrl);
+		if (!bits) return;
+		fetchGapsManifest().then((manifest) => {
+			setCoveragePct(computeCoverage(manifest.grid, bits));
+		});
 	}
 
 	async function loadGaps(url: string) {
 		if (!map) return;
 		try {
-			let geojson = gapCache.get(url);
-			if (!geojson) {
+			const manifest = await fetchGapsManifest();
+			const grid = manifest.grid;
+
+			let bits = bitsCache.get(url);
+			if (!bits) {
 				const res = await fetch(url);
 				if (!res.ok) return;
-				const raw = (await res.json()) as GapData;
-				rawCache.set(url, raw);
-				geojson = toCoverageSquares(raw);
-				gapCache.set(url, geojson);
+				bits = ((await res.json()) as { bits: number[] }).bits;
+				bitsCache.set(url, bits);
 			}
 			currentUrl = url;
+
+			let geojson = gapCache.get(url);
+			if (!geojson) {
+				geojson = buildSquares(grid, bits);
+				gapCache.set(url, geojson);
+			}
 
 			if (map.getSource("gaps")) {
 				(map.getSource("gaps") as GeoJSONSource).setData(geojson);
@@ -154,7 +156,6 @@ export default function ChargeGapMap(props: MapProps) {
 		});
 
 		map.addControl(new NavigationControl(), "top-right");
-
 
 		map.on("moveend", updateCoverage);
 

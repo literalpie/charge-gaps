@@ -23,16 +23,16 @@ if (!apiKey) {
 	throw new Error("NREL_API_KEY not set");
 }
 
-const { manifest, data, gridPoints, totalStations } = await computeAllGaps(apiKey);
+const { manifest, data, totalStations } = await computeAllGaps(apiKey);
 
 const outputDir = join(process.cwd(), "public", "data", "gaps");
 mkdirSync(outputDir, { recursive: true });
 
-writeFileSync(join(outputDir, "manifest.json"), JSON.stringify(manifest, null, 2));
-for (const [key, geojson] of data) {
-	writeFileSync(join(outputDir, `${key}.json`), JSON.stringify(geojson));
+writeFileSync(join(outputDir, "manifest.json"), JSON.stringify(manifest));
+for (const [key, bits] of data) {
+	writeFileSync(join(outputDir, `${key}.json`), JSON.stringify({ bits }));
 }
 
 console.log(
-	`Wrote ${data.size} bucket(s) to ${outputDir} (${gridPoints} grid points, ${totalStations} stations)`,
+	`Wrote ${data.size} bucket(s) to ${outputDir} (${manifest.grid.total} grid points, ${totalStations} stations)`,
 );

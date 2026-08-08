@@ -11,27 +11,33 @@ export interface Station {
 	open_date: string | null;
 }
 
-export interface GapFeature {
-	type: "Feature";
-	geometry: { type: "Point"; coordinates: [number, number] };
-	properties: { nearestChargerMi: number | null };
+export interface GridSpec {
+	west: number;
+	south: number;
+	east: number;
+	north: number;
+	latStep: number;
+	lngStep: number;
+	latCount: number;
+	lngCount: number;
+	total: number;
 }
 
-export interface GapFeatureCollection {
-	type: "FeatureCollection";
-	features: GapFeature[];
+export interface ManifestEntry {
+	key: string;
+	label: string;
+	coveredCount: number;
+}
+
+export interface CoverageManifest {
+	grid: GridSpec;
+	buckets: ManifestEntry[];
 }
 
 export interface TimeBucket {
 	key: string;
 	label: string;
 	cutoff: Date;
-}
-
-export interface ManifestEntry {
-	key: string;
-	label: string;
-	gapCount: number;
 }
 
 const US_BOUNDS = {
@@ -43,20 +49,52 @@ const US_BOUNDS = {
 
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 
+function gridCounts(
+	bounds: typeof US_BOUNDS,
+	spacingMi: number,
+): { latStep: number; lngStep: number; latCount: number; lngCount: number } {
+	const latStep = spacingMi / 69;
+	const lngStep = spacingMi / 53;
+	return {
+		latStep,
+		lngStep,
+		latCount: Math.floor((bounds.north - bounds.south) / latStep) + 1,
+		lngCount: Math.floor((bounds.east - bounds.west) / lngStep) + 1,
+	};
+}
+
 function generateGrid(
 	bounds: typeof US_BOUNDS,
 	spacingMi: number,
 ): { lat: number; lng: number }[] {
-	const latStep = spacingMi / 69;
-	const lngStep = spacingMi / 53;
+	const { latStep, lngStep, latCount, lngCount } = gridCounts(bounds, spacingMi);
 	const points: { lat: number; lng: number }[] = [];
 
-	for (let lat = bounds.south; lat <= bounds.north; lat += latStep) {
-		for (let lng = bounds.west; lng <= bounds.east; lng += lngStep) {
-			points.push({ lat, lng });
+	for (let latIdx = 0; latIdx < latCount; latIdx++) {
+		const lat = bounds.south + latIdx * latStep;
+		for (let lngIdx = 0; lngIdx < lngCount; lngIdx++) {
+			points.push({ lat, lng: bounds.west + lngIdx * lngStep });
 		}
 	}
 	return points;
+}
+
+function gridSpecFrom(
+	points: { lat: number; lng: number }[],
+	spacingMi: number,
+): GridSpec {
+	const { latStep, lngStep, latCount, lngCount } = gridCounts(
+		US_BOUNDS,
+		spacingMi,
+	);
+	return {
+		...US_BOUNDS,
+		latStep,
+		lngStep,
+		latCount,
+		lngCount,
+		total: points.length,
+	};
 }
 
 interface IndexedStation {
@@ -151,34 +189,21 @@ class StationIndex {
 	}
 }
 
-function computeGapsForGrid(
+function computeCoverageBits(
 	grid: { lat: number; lng: number }[],
 	index: StationIndex,
-): GapFeature[] {
-	const gapFeatures: GapFeature[] = [];
+): number[] {
+	const words = new Uint32Array(Math.ceil(grid.length / 32));
 
-	for (const point of grid) {
+	for (let i = 0; i < grid.length; i++) {
+		const point = grid[i];
 		const nearest = index.nearest(point.lat, point.lng);
-		if (nearest.isGap) {
-			gapFeatures.push({
-				type: "Feature",
-				geometry: {
-					type: "Point",
-					coordinates: [
-						Math.round(point.lng * 1000) / 1000,
-						Math.round(point.lat * 1000) / 1000,
-					],
-				},
-				properties: {
-					nearestChargerMi: Number.isFinite(nearest.distance)
-						? Math.round(nearest.distance * 10) / 10
-						: null,
-				},
-			});
+		if (!nearest.isGap) {
+			words[i >> 5] |= 1 << (i & 31);
 		}
 	}
 
-	return gapFeatures;
+	return Array.from(words);
 }
 
 export function generateTimeBuckets(now = new Date()): TimeBucket[] {
@@ -249,9 +274,8 @@ async function fetchStations(apiKey: string): Promise<Station[]> {
 export async function computeAllGaps(
 	apiKey: string,
 ): Promise<{
-	manifest: ManifestEntry[];
-	data: Map<string, GapFeatureCollection>;
-	gridPoints: number;
+	manifest: CoverageManifest;
+	data: Map<string, number[]>;
 	totalStations: number;
 }> {
 	console.log("Fetching DC fast chargers...");
@@ -259,6 +283,7 @@ export async function computeAllGaps(
 	console.log(`Found ${stations.length} stations`);
 
 	const grid = generateGrid(US_BOUNDS, GRID_SPACING_MILES);
+	const gridSpec = gridSpecFrom(grid, GRID_SPACING_MILES);
 	console.log(`Generated ${grid.length} land grid points (ocean points filtered)`);
 
 	stations.sort((a, b) => {
@@ -269,8 +294,8 @@ export async function computeAllGaps(
 	});
 
 	const buckets = generateTimeBuckets();
-	const manifest: ManifestEntry[] = [];
-	const data = new Map<string, GapFeatureCollection>();
+	const bucketsList: ManifestEntry[] = [];
+	const data = new Map<string, number[]>();
 
 	for (let i = 0; i < buckets.length; i++) {
 		const bucket = buckets[i];
@@ -290,29 +315,36 @@ export async function computeAllGaps(
 
 		const stationsAtTime = stations.slice(0, lo);
 		const index = new StationIndex(stationsAtTime);
-		const gaps = computeGapsForGrid(grid, index);
+		const bits = computeCoverageBits(grid, index);
 
-		data.set(bucket.key, {
-			type: "FeatureCollection",
-			features: gaps,
-		});
+		data.set(bucket.key, bits);
 
-		manifest.push({
+		let coveredCount = 0;
+		for (const w of bits) {
+			coveredCount += popcount(w);
+		}
+		bucketsList.push({
 			key: bucket.key,
 			label: bucket.label,
-			gapCount: gaps.length,
+			coveredCount,
 		});
 
 		const pct = Math.round(((i + 1) / buckets.length) * 100);
 		console.log(
-			`[${pct}%] ${bucket.label}: ${stationsAtTime.length} stations, ${gaps.length} gaps`,
+			`[${pct}%] ${bucket.label}: ${stationsAtTime.length} stations, ${coveredCount} covered`,
 		);
 	}
 
 	return {
-		manifest,
+		manifest: { grid: gridSpec, buckets: bucketsList },
 		data,
-		gridPoints: grid.length,
 		totalStations: stations.length,
 	};
+}
+
+function popcount(x: number): number {
+	x = x - ((x >> 1) & 0x55555555);
+	x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+	x = (x + (x >> 4)) & 0x0f0f0f0f;
+	return (x * 0x01010101) >> 24;
 }

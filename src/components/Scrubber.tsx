@@ -1,11 +1,7 @@
 import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { gapsManifestUrl } from "../lib/gaps";
+import { fetchGapsManifest, type ManifestEntry } from "../lib/gaps";
 
-interface Bucket {
-	key: string;
-	label: string;
-	gapCount: number;
-}
+type Bucket = ManifestEntry;
 
 interface ScrubberProps {
 	class?: string;
@@ -27,9 +23,8 @@ export default function Scrubber(props: ScrubberProps) {
 
 	onMount(async () => {
 		try {
-			const res = await fetch(gapsManifestUrl());
-			if (!res.ok) return;
-			const data = (await res.json()) as Bucket[];
+			const manifest = await fetchGapsManifest();
+			const data = manifest.buckets;
 			setBuckets(data);
 			if (data.length > 0) {
 				const idx = data.findIndex((b) => b.key === props.selectedKey);
@@ -88,9 +83,6 @@ export default function Scrubber(props: ScrubberProps) {
 			<div class="flex items-center justify-between mb-1">
 				<span class="font-semibold text-sm">
 					{current()?.label ?? "Loading..."}
-				</span>
-				<span class="text-xs text-gray-500 ml-2">
-					{current()?.gapCount.toLocaleString() ?? "—"} gaps
 				</span>
 			</div>
 			<div class="flex items-center gap-2">

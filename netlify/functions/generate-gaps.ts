@@ -12,19 +12,19 @@ export default async () => {
 		});
 	}
 
-	const { manifest, data, gridPoints, totalStations } = await computeAllGaps(apiKey);
+	const { manifest, data, totalStations } = await computeAllGaps(apiKey);
 
 	const store = getStore({ name: "gaps" });
 
 	await store.setJSON("manifest.json", manifest);
-	for (const [key, geojson] of data) {
-		await store.setJSON(`${key}.json`, geojson);
+	for (const [key, bits] of data) {
+		await store.setJSON(`${key}.json`, { bits });
 	}
 
 	const summary = {
 		ok: true,
 		buckets: data.size,
-		gridPoints,
+		gridPoints: manifest.grid.total,
 		totalStations,
 	};
 	console.log("Stored:", summary);
