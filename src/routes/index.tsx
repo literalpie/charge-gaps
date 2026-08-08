@@ -1,14 +1,24 @@
-import { createFileRoute } from "@tanstack/solid-router";
-import { createSignal } from "solid-js";
+import { createFileRoute, useNavigate } from "@tanstack/solid-router";
+import { createMemo } from "solid-js";
 import Map from "../components/Map";
 import Legend from "../components/Legend";
 import Scrubber from "../components/Scrubber";
 import { gapsDataUrl } from "../lib/gaps";
 
-export const Route = createFileRoute("/")({ component: Home });
+export const Route = createFileRoute("/")({
+	validateSearch: (search: Record<string, unknown>) => ({
+		date: typeof search.date === "string" ? search.date : undefined,
+	}),
+	component: Home,
+});
 
 function Home() {
-	const [dataUrl, setDataUrl] = createSignal("");
+	const search = Route.useSearch();
+	const navigate = useNavigate({ from: "/" });
+	const dataUrl = createMemo(() => {
+		const date = search().date;
+		return date ? gapsDataUrl(date) : "";
+	});
 
 	return (
 		<div class="relative w-full h-screen">
@@ -20,7 +30,10 @@ function Home() {
 				<Legend />
 			</div>
 			<div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 w-[90%] max-w-xl">
-				<Scrubber onChange={(key) => setDataUrl(gapsDataUrl(key))} />
+				<Scrubber
+					selectedKey={search().date}
+					onSelect={(key) => navigate({ search: { date: key } })}
+				/>
 			</div>
 		</div>
 	);

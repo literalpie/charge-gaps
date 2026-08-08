@@ -30,6 +30,17 @@ function toSquares(fc: GapData): GapData {
 }
 
 const gapCache = new Map<string, GapData>();
+const rawCache = new Map<string, GapData>();
+
+const US_BOUNDS = {
+	north: 49,
+	south: 24.5,
+	east: -66.9,
+	west: -124.7,
+};
+
+const LAT_STEP = 10 / 69;
+const LNG_STEP = 10 / 53;
 
 interface MapProps {
 	center?: [number, number];
@@ -43,7 +54,38 @@ export default function ChargeGapMap(props: MapProps) {
 	let container: HTMLDivElement | undefined;
 	let map: MapLibreMap | undefined;
 	let loaded = false;
-	const [zoomLevel, setZoomLevel] = createSignal(props.zoom ?? 3.95);
+	let currentUrl: string | undefined;
+	const [coveragePct, setCoveragePct] = createSignal<number | null>(null);
+
+	function computeCoverage(): number | null {
+		if (!map || !currentUrl) return null;
+		const raw = rawCache.get(currentUrl);
+		if (!raw) return null;
+		const b = map.getBounds();
+		const west = Math.max(b.getWest(), US_BOUNDS.west);
+		const east = Math.min(b.getEast(), US_BOUNDS.east);
+		const south = Math.max(b.getSouth(), US_BOUNDS.south);
+		const north = Math.min(b.getNorth(), US_BOUNDS.north);
+		if (west >= east || south >= north) return null;
+
+		const totalLat = Math.floor((north - US_BOUNDS.south) / LAT_STEP) -
+			Math.ceil((south - US_BOUNDS.south) / LAT_STEP) + 1;
+		const totalLng = Math.floor((east - US_BOUNDS.west) / LNG_STEP) -
+			Math.ceil((west - US_BOUNDS.west) / LNG_STEP) + 1;
+		const total = totalLat * totalLng;
+		if (total <= 0) return null;
+
+		let gaps = 0;
+		for (const f of (raw as FeatureCollection).features) {
+			const [lng, lat] = (f.geometry as Point).coordinates;
+			if (lng >= west && lng <= east && lat >= south && lat <= north) gaps++;
+		}
+		return (1 - gaps / total) * 100;
+	}
+
+	function updateCoverage() {
+		setCoveragePct(computeCoverage());
+	}
 
 	async function loadGaps(url: string) {
 		if (!map) return;
@@ -52,9 +94,12 @@ export default function ChargeGapMap(props: MapProps) {
 			if (!geojson) {
 				const res = await fetch(url);
 				if (!res.ok) return;
-				geojson = toSquares(await res.json());
+				const raw = (await res.json()) as GapData;
+				rawCache.set(url, raw);
+				geojson = toSquares(raw);
 				gapCache.set(url, geojson);
 			}
+			currentUrl = url;
 
 			if (map.getSource("gaps")) {
 				(map.getSource("gaps") as GeoJSONSource).setData(geojson);
@@ -70,6 +115,7 @@ export default function ChargeGapMap(props: MapProps) {
 					},
 				});
 			}
+			updateCoverage();
 		} catch (e) {
 			console.warn("Could not load gap data:", e);
 		}
@@ -98,9 +144,8 @@ export default function ChargeGapMap(props: MapProps) {
 
 		map.addControl(new NavigationControl(), "top-right");
 
-		map.on("zoom", () => {
-			setZoomLevel(map?.getZoom() ?? 0);
-		});
+
+		map.on("moveend", updateCoverage);
 
 		map.on("load", () => {
 			loaded = true;
@@ -125,8 +170,13 @@ export default function ChargeGapMap(props: MapProps) {
 			class={props.class}
 			style={{ width: "100%", height: "100%" }}
 		>
-			<div class="absolute bottom-4 right-4 z-10 bg-black/70 text-white text-sm font-mono px-2 py-1 rounded">
-				zoom: {zoomLevel().toFixed(2)}
+			<div class="absolute bottom-4 right-4 z-10 flex flex-col items-end gap-1">
+				<div class="bg-black/70 text-white text-sm font-mono px-2 py-1 rounded">
+					coverage: {(() => {
+						const c = coveragePct();
+						return c === null ? "—" : `${c.toFixed(1)}%`;
+					})()}
+				</div>
 			</div>
 			{props.children}
 		</div>
