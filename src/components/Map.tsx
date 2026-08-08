@@ -1,4 +1,9 @@
 import { createEffect, onCleanup, onMount, type JSX } from "solid-js";
+import { Map, NavigationControl, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
+import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import "maplibre-gl/dist/maplibre-gl.css";
+
+setWorkerUrl(workerUrl);
 
 interface MapProps {
 	center?: [number, number];
@@ -10,7 +15,7 @@ interface MapProps {
 
 export default function ChargeGapMap(props: MapProps) {
 	let container: HTMLDivElement | undefined;
-	let map: any;
+	let map: Map | undefined;
 	let loaded = false;
 
 	async function loadGaps(url: string) {
@@ -21,7 +26,7 @@ export default function ChargeGapMap(props: MapProps) {
 			const geojson = await res.json();
 
 			if (map.getSource("gaps")) {
-				map.getSource("gaps").setData(geojson);
+				(map.getSource("gaps") as GeoJSONSource).setData(geojson);
 			} else {
 				map.addSource("gaps", { type: "geojson", data: geojson });
 				map.addLayer({
@@ -48,13 +53,10 @@ export default function ChargeGapMap(props: MapProps) {
 		}
 	}
 
-	onMount(async () => {
+	onMount(() => {
 		if (!container) return;
 
-		const maplibregl = await import("maplibre-gl");
-		await import("maplibre-gl/dist/maplibre-gl.css");
-
-		map = new maplibregl.Map({
+		map = new Map({
 			container,
 			style: {
 				version: 8,
@@ -72,7 +74,7 @@ export default function ChargeGapMap(props: MapProps) {
 			zoom: props.zoom ?? 5,
 		});
 
-		map.addControl(new maplibregl.NavigationControl(), "top-right");
+		map.addControl(new NavigationControl(), "top-right");
 
 		map.on("load", () => {
 			loaded = true;
@@ -84,7 +86,6 @@ export default function ChargeGapMap(props: MapProps) {
 		const url = props.dataUrl;
 		if (loaded && url) {
 			loadGaps(url);
-			
 		}
 	});
 

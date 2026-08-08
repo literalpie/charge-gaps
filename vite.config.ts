@@ -8,9 +8,6 @@ import netlify from '@netlify/vite-plugin-tanstack-start'
 
 export default defineConfig({
   resolve: { tsconfigPaths: true },
-  optimizeDeps: {
-    exclude: ["maplibre-gl"],
-  },
   plugins: [
     netlify(),
     tailwindcss(),
